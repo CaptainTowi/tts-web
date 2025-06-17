@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text-to-Speech Reader</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <i class="fas fa-book-reader"></i>
+                <h1>Text-to-Speech Reader</h1>
+            </div>
+            <p class="subtitle">Transform any document into an audio experience</p>
+        </header>
+
+        <main class="main-content">
+            <!-- Text Input Section -->
+            <section class="text-input-section">
+                <div class="input-header">
+                    <h3><i class="fas fa-keyboard"></i> Direct Text Input</h3>
+                    <p>Paste or type your text directly below</p>
+                </div>
+                <div class="text-input-container">
+                    <textarea id="textInput" placeholder="Paste your text here or type directly..." rows="8"></textarea>
+                    <div class="text-input-controls">
+                        <button class="action-btn primary" id="readTextBtn">
+                            <i class="fas fa-play"></i> Read Text
+                        </button>
+                        <button class="action-btn" id="clearTextBtn">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                        <div class="text-stats">
+                            <span id="textStats">0 characters, 0 words</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- File Upload Section -->
+            <section class="upload-section">
+                <div class="section-header">
+                    <h3><i class="fas fa-file-upload"></i> File Upload</h3>
+                    <p>Upload documents to convert to speech</p>
+                </div>
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <h3>Drop your files here or click to browse</h3>
+                    <p>Supports: TEXT, EPUB, PDF, MOBI, DOCX, HTML</p>
+                    <input type="file" id="fileInput" accept=".txt,.epub,.pdf,.mobi,.docx,.html" multiple hidden>
+                    <button class="browse-btn" onclick="document.getElementById('fileInput').click()">
+                        <i class="fas fa-folder-open"></i> Browse Files
+                    </button>
+                </div>
+                
+                <div class="file-list" id="fileList"></div>
+            </section>
+
+            <!-- Content Display Section -->
+            <section class="content-section" id="contentSection" style="display: none;">
+                <div class="content-header">
+                    <h3 id="documentTitle">Document Content</h3>
+                    <div class="content-controls">
+                        <button class="control-btn" id="toggleContentBtn">
+                            <i class="fas fa-eye"></i> Show Content
+                        </button>
+                    </div>
+                </div>
+                <div class="content-display" id="contentDisplay"></div>
+            </section>
+
+            <!-- Audio Player Section -->
+            <section class="player-section" id="playerSection" style="display: none;">
+                <div class="player-container">
+                    <div class="player-header">
+                        <h3>Audio Player</h3>
+                        <div class="voice-controls">
+                            <select id="voiceSelect" class="voice-select">
+                                <option value="">Select Voice</option>
+                            </select>
+                            <div class="speed-control">
+                                <label for="speedRange">Speed:</label>
+                                <input type="range" id="speedRange" min="0.5" max="2" step="0.1" value="1">
+                                <span id="speedValue">1.0x</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="progress-container">
+                        <div class="progress-bar" id="progressBar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                        <div class="time-display">
+                            <span id="currentTime">0:00</span>
+                            <span id="totalTime">0:00</span>
+                        </div>
+                    </div>
+
+                    <div class="player-controls">
+                        <button class="control-btn" id="prevBtn">
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button class="control-btn play-pause-btn" id="playPauseBtn">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button class="control-btn" id="nextBtn">
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                        <button class="control-btn" id="stopBtn">
+                            <i class="fas fa-stop"></i>
+                        </button>
+                    </div>
+
+                    <div class="volume-container">
+                        <i class="fas fa-volume-down"></i>
+                        <input type="range" id="volumeRange" min="0" max="1" step="0.1" value="1">
+                        <i class="fas fa-volume-up"></i>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Status Section -->
+            <section class="status-section">
+                <div class="status-display" id="statusDisplay">
+                    <i class="fas fa-info-circle"></i>
+                    <span>Ready to load documents</span>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Processing document...</p>
+        </div>
+    </div>
+
+    <!-- Include required libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
+
