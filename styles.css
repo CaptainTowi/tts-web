@@ -454,17 +454,40 @@ body {
     height: 8px;
     background: var(--border-color);
     border-radius: 4px;
-    overflow: hidden;
+    overflow: visible; /* Changed to visible to allow handle outside */
     cursor: pointer;
     margin-bottom: 10px;
+    position: relative; /* Needed for positioning the handle */
 }
 
 .progress-fill {
     height: 100%;
     background: linear-gradient(90deg, var(--primary-green), var(--light-green));
     width: 0%;
-    transition: width 0.3s ease;
+    transition: width 0.1s linear; /* Faster transition for smoother scrubbing */
     box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+    position: relative; /* Needed for handle pseudo-element */
+}
+
+/* Progress Handle (pseudo-element for draggable thumb) */
+.progress-fill::after {
+    content: '';
+    position: absolute;
+    right: -9px; /* Half of its width to center it on the end of the fill */
+    top: -5px;
+    width: 18px;
+    height: 18px;
+    background: var(--primary-green);
+    border-radius: 50%;
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.7);
+    cursor: grab;
+    transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.progress-fill:active::after {
+    cursor: grabbing;
+    transform: scale(1.1);
+    box-shadow: 0 0 20px rgba(0, 255, 136, 1);
 }
 
 .time-display {
@@ -534,7 +557,7 @@ body {
     width: 120px;
 }
 
-/* Range Input Styling */
+/* Range Input Styling (kept for volume/speed) */
 input[type="range"] {
     -webkit-appearance: none;
     appearance: none;
@@ -693,10 +716,21 @@ input[type="range"]::-moz-range-thumb {
     animation: pulse 2s infinite;
 }
 
-/* Highlight current sentence being read */
+/* Highlight current sentence being read and clickable sentences*/
+.clickable-sentence {
+    cursor: pointer;
+    white-space: pre-wrap; /* Preserve whitespace and line breaks */
+    display: inline; /* Allows highlighting across lines */
+}
+
+.clickable-sentence:hover {
+    background-color: rgba(0, 255, 136, 0.1);
+    border-radius: 4px;
+}
+
 .current-sentence {
-    background: rgba(0, 255, 136, 0.2);
+    background: rgba(0, 255, 136, 0.3); /* Slightly darker highlight */
     padding: 2px 4px;
     border-radius: 4px;
-    transition: all 0.3s ease;
+    transition: background 0.3s ease;
 }
