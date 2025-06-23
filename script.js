@@ -65,8 +65,6 @@ class TextToSpeechReader {
         this.volumeRange = document.getElementById('volumeRange');
         this.progressBar = document.getElementById('progressBar');
         this.progressFill = document.getElementById('progressFill');
-        // IMPORTANT: Removed reference to 'progressHandle' as it's a pseudo-element in CSS
-        // and doesn't exist as a direct DOM element in the provided HTML.
         this.currentTime = document.getElementById('currentTime');
         this.totalTime = document.getElementById('totalTime');
         
@@ -74,7 +72,7 @@ class TextToSpeechReader {
         this.statusDisplay = document.getElementById('statusDisplay');
         this.loadingOverlay = document.getElementById('loadingOverlay');
         
-        // Dragging state for progress bar (renamed to avoid conflict)
+        // Dragging state for progress bar
         this.isDraggingProgressBar = false;
     }
 
@@ -103,7 +101,6 @@ class TextToSpeechReader {
         
         // Progress bar click and drag events
         this.progressBar.addEventListener('click', (e) => this.seekToPosition(e));
-        // Using progressBar for mousedown/touchstart as per HTML structure for dragging
         this.progressBar.addEventListener('mousedown', (e) => this.startProgressBarDrag(e));
         this.progressBar.addEventListener('touchstart', (e) => this.startProgressBarDrag(e));
         
@@ -243,10 +240,13 @@ class TextToSpeechReader {
                         text = await this.parseDocxFile(file);
                         break;
                     case 'epub':
-                        text = await this.parseEpubFile(file); // Call the actual Epub parser
+                        text = await this.parseEpubFile(file);
                         break;
                     case 'mobi':
-                        text = await this.parseMobiFile(file); // Call the actual Mobi parser
+                        // Mobi parsing is very complex client-side.
+                        // This is a placeholder and advises server-side parsing.
+                        this.updateStatus('MOBI files are difficult to parse client-side. Functionality may be limited or absent.', 'warning');
+                        text = await this.parseMobiFile(file); // Attempting, but might be empty or partial
                         break;
                     default:
                         throw new Error(`Unsupported file format: ${fileExtension}`);
@@ -255,9 +255,7 @@ class TextToSpeechReader {
                 if (text) {
                     fileItem.dataset.fileContent = text; // Store the parsed text
                     fileItem.querySelector('.file-details p').textContent = `Ready (${text.length} chars)`;
-                    // If you have a 'Read' button in createFileItem that needs to be shown/hidden
-                    const readButton = fileItem.querySelector('.read-file-btn');
-                    if (readButton) readButton.style.display = 'inline-block'; 
+                    fileItem.querySelector('.read-file-btn').style.display = 'inline-block'; // Show read button
                     this.updateStatus(`Successfully parsed "${file.name}"`);
 
                     // If it's the first file, load it directly
@@ -287,7 +285,6 @@ class TextToSpeechReader {
     createFileItem(file) {
         const fileItem = document.createElement('div');
         fileItem.classList.add('file-item');
-        // Ensure read-file-btn exists and has its event listener if it was omitted previously
         fileItem.innerHTML = `
             <div class="file-info">
                 <i class="file-icon fas fa-file"></i>
@@ -302,7 +299,6 @@ class TextToSpeechReader {
             </div>
         `;
         
-        // Attach event listeners directly to the buttons after creation
         fileItem.querySelector('.read-file-btn').addEventListener('click', () => {
             const textContent = fileItem.dataset.fileContent;
             if (textContent) {
@@ -332,242 +328,287 @@ class TextToSpeechReader {
         return fileItem;
     }
 
-    getFileIcon(filename) {
-        const extension = filename.split('.').pop().toLowerCase();
-        const iconMap = {
-            'txt': 'fas fa-file-alt',
-            'html': 'fab fa-html5',
-            'pdf': 'fas fa-file-pdf',
-            'docx': 'fas fa-file-word',
-            'epub': 'fas fa-book',
-            'mobi': 'fas fa-book-open'
-        };
-        return iconMap[extension] || 'fas fa-file';
-    }
+    // --- File Parsing Functions ---
 
-    formatFileSize(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    // Document parsing methods
-    async parseTextFile(file) {
+    // Generic file reader
+    readFileAsText(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = (e) => resolve(e.target.result);
-            reader.onerror = (e) => reject(new Error('Failed to read text file'));
+            reader.onerror = (e) => reject(e);
             reader.readAsText(file);
         });
     }
 
+    // .txt
+    async parseTextFile(file) {
+        return this.readFileAsText(file);
+    }
+
+    // .html
     async parseHtmlFile(file) {
-        const htmlContent = await this.parseTextFile(file);
+        const html = await this.readFileAsText(file);
         const parser = new DOMParser();
-        const doc = parser.parseFromString(htmlContent, 'text/html');
-        
-        // Remove script and style elements
-        const scripts = doc.querySelectorAll('script, style');
-        scripts.forEach(el => el.remove());
-        
-        return doc.body.textContent || doc.body.innerText || '';
+        const doc = parser.parseFromString(html, 'text/html');
+        // Extract text content, cleaning up script/style tags
+        doc.querySelectorAll('script, style').forEach(el => el.remove());
+        return doc.body.textContent || '';
     }
 
+    // .pdf
     async parsePdfFile(file) {
-        // Corrected and completed parsePdfFile function
-        return new Promise(async (resolve, reject) => {
-            try {
-                // Ensure pdfjsLib is defined
-                if (typeof pdfjsLib === 'undefined' || !pdfjsLib.getDocument) {
-                    throw new Error('PDF.js library not loaded or initialized correctly.');
-                }
-                const arrayBuffer = await file.arrayBuffer();
-                const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
-                let fullText = '';
-                
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    const page = await pdf.getPage(i);
-                    const textContent = await page.getTextContent();
-                    const pageText = textContent.items.map(item => item.str).join(' ');
-                    fullText += pageText + '\n\n'; // Add spacing between pages
-                }
-                resolve(fullText.trim());
-            } catch (error) {
-                reject(new Error('Failed to parse PDF file: ' + error.message));
-            }
-        });
-    }
-
-    async parseDocxFile(file) {
-        if (typeof mammoth === 'undefined') {
-            throw new Error("Mammoth.js library not loaded for DOCX parsing.");
+        if (typeof pdfjsLib === 'undefined' || !pdfjsLib.getDocument) {
+            throw new Error('PDF.js library not loaded or initialized correctly.');
         }
-        return new Promise(async (resolve, reject) => {
-            try {
-                const arrayBuffer = await file.arrayBuffer();
-                const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-                resolve(result.value); // The raw text content
-            } catch (error) {
-                reject(new Error('Failed to parse DOCX file: ' + error.message));
-            }
-        });
+        const arrayBuffer = await file.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
+        let text = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            text += content.items.map(item => item.str).join(' ') + '\n\n';
+        }
+        return text;
     }
 
+    // .docx
+    async parseDocxFile(file) {
+        if (typeof mammoth === 'undefined' || !mammoth.extractRawText) {
+            throw new Error('Mammoth.js library not loaded or initialized correctly.');
+        }
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+        return result.value; // The raw text
+    }
+
+    // .epub (Simplified - EPUBs are ZIP archives of HTML, CSS, images etc.)
     async parseEpubFile(file) {
         if (typeof JSZip === 'undefined') {
-            throw new Error("JSZip library not loaded for EPUB parsing.");
+            throw new Error('JSZip library not loaded for EPUB parsing.');
         }
-        return new Promise(async (resolve, reject) => {
-            try {
-                const zip = await JSZip.loadAsync(file);
-                let fullText = '';
-                // Common paths for content in EPUBs
-                const contentFiles = zip.file(/.+\.(xhtml|html|ncx)$/i); 
-                
-                for (const fileEntry of contentFiles) {
-                    const content = await fileEntry.async('string');
-                    // Basic HTML stripping for EPUB content
-                    const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = content;
-                    fullText += tempDiv.textContent || tempDiv.innerText || '';
-                    fullText += '\n\n'; // Add some separation between parts
-                }
-                if (!fullText.trim()) {
-                    // Fallback to text files if no xhtml/html content (e.g., plain text epub)
-                    const txtFiles = zip.file(/.+\.txt$/i);
-                    for (const fileEntry of txtFiles) {
-                        fullText += await fileEntry.async('string');
-                        fullText += '\n\n';
-                    }
-                }
-                if (!fullText.trim()) {
-                    reject(new Error('Could not extract readable text from EPUB.'));
-                } else {
-                    resolve(fullText);
-                }
-            } catch (error) {
-                reject(new Error('Failed to parse EPUB file: ' + error.message));
+        const arrayBuffer = await file.arrayBuffer();
+        const zip = await JSZip.loadAsync(arrayBuffer);
+        
+        let fullText = '';
+        const opfFile = zip.file(/\.opf$/i)[0]; // Find the OPF file for manifest/spine
+
+        if (!opfFile) {
+            // Fallback: If no OPF, try to read all HTML files directly
+            const htmlFiles = Object.keys(zip.files).filter(fileName => fileName.endsWith('.html') || fileName.endsWith('.xhtml'));
+            for (const path of htmlFiles) {
+                const content = await zip.files[path].async('text');
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(content, 'text/html');
+                doc.querySelectorAll('script, style').forEach(el => el.remove());
+                fullText += doc.body.textContent + '\n\n';
             }
-        });
+        } else {
+            // More robust EPUB parsing would involve parsing the OPF to find the reading order
+            // For simplicity, we'll just extract all HTML content from the zip.
+            const htmlFiles = Object.keys(zip.files).filter(fileName => fileName.endsWith('.html') || fileName.endsWith('.xhtml'));
+            for (const path of htmlFiles) {
+                const content = await zip.files[path].async('text');
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(content, 'text/html');
+                doc.querySelectorAll('script, style').forEach(el => el.remove());
+                fullText += doc.body.textContent + '\n\n';
+            }
+        }
+        return fullText.trim();
     }
 
+    // .mobi (Placeholder - client-side parsing is very limited)
     async parseMobiFile(file) {
-        // NOTE: Mobi parsing client-side is very complex and typically not supported well by JS libraries.
-        // This is a rudimentary attempt and might not work for many MOBI files.
-        // For robust MOBI support, consider a backend service or a more specialized library.
-        this.updateStatus('MOBI parsing is experimental and may not work for all files.', 'warning');
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const buffer = e.target.result;
-                try {
-                    // This is a very simplistic approach, trying to extract readable strings.
-                    // A proper MOBI parser would need to understand its internal structure.
-                    const textDecoder = new TextDecoder('utf-8');
-                    const text = textDecoder.decode(buffer);
-                    // Attempt to clean up common binary/metadata artifacts
-                    const cleanedText = text.replace(/[\x00-\x1F\x7F-\x9F]/g, '') // Remove control characters
-                                            .replace(/[\uFFFD\u200B]/g, '') // Remove replacement characters and zero-width spaces
-                                            .replace(/\s+/g, ' ') // Collapse multiple spaces
-                                            .trim();
-                    if (cleanedText.length < 50) { // If very little text, it probably failed
-                         reject(new Error('MOBI parsing yielded very little content. File might be encrypted or unsupported.'));
-                    } else {
-                        resolve(cleanedText);
-                    }
-                } catch (error) {
-                    reject(new Error('Failed to parse MOBI file (decode error): ' + error.message));
-                }
-            };
-            reader.onerror = (e) => reject(new Error('Failed to read MOBI file'));
-            reader.readAsArrayBuffer(file);
-        });
+        // Client-side MOBI parsing is exceptionally complex and often requires a server-side component
+        // or a very specialized JS library that is large and may not cover all MOBI formats.
+        // For demonstration, we'll try a very basic text extraction, which may yield poor results.
+        const arrayBuffer = await file.arrayBuffer();
+        const decoder = new TextDecoder('utf-8'); // Attempt UTF-8, might need others
+        const text = decoder.decode(arrayBuffer);
+        
+        // This is a naive attempt. Real MOBI parsing involves understanding its internal structure.
+        // It might return binary data or garbled text.
+        console.warn('MOBI parsing is highly experimental client-side. Expect limited or no functionality.');
+        this.updateStatus('MOBI file parsing is experimental and may not work correctly.', 'warning');
+        return text.substring(0, Math.min(text.length, 5000)); // Return a snippet or try to find readable parts
     }
+
 
     // Speech synthesis methods
     loadVoices() {
-        this.voices = this.speechSynthesis.getVoices();
-        this.voiceSelect.innerHTML = ''; // Clear previous options
-        
-        // Add a default "Select Voice" option
-        const defaultOption = document.createElement('option');
-        defaultOption.value = '';
-        defaultOption.textContent = 'Select Voice';
-        this.voiceSelect.appendChild(defaultOption);
+        this.voices = this.speechSynthesis.getVoices().sort((a, b) => a.name.localeCompare(b.name));
+        this.voiceSelect.innerHTML = '<option value="">Select Voice</option>'; // Clear existing options
+        let defaultVoiceFound = false;
 
         this.voices.forEach(voice => {
             const option = document.createElement('option');
-            option.value = voice.name;
             option.textContent = `${voice.name} (${voice.lang})`;
-            if (voice.default) {
-                option.textContent += ' - Default';
-                this.selectedVoice = voice; // Set default voice
-            }
+            option.value = voice.name;
             this.voiceSelect.appendChild(option);
+
+            // Set a default voice, e.g., an English one
+            if (!defaultVoiceFound && voice.lang.startsWith('en-')) {
+                this.selectedVoice = voice;
+                option.selected = true;
+                defaultVoiceFound = true;
+            }
         });
 
-        // Try to pre-select a default or common voice
-        if (this.selectedVoice) {
-            this.voiceSelect.value = this.selectedVoice.name;
-        } else if (this.voices.length > 0) {
-            // If no default, pick the first English voice, or just the first available
-            const enVoice = this.voices.find(v => v.lang.startsWith('en'));
-            this.selectedVoice = enVoice || this.voices[0];
-            this.voiceSelect.value = this.selectedVoice.name;
+        // If no English voice found, just select the first available
+        if (!defaultVoiceFound && this.voices.length > 0) {
+            this.selectedVoice = this.voices[0];
+            this.voiceSelect.value = this.voices[0].name;
         }
-        this.updateStatus(`Voices loaded: ${this.voices.length}`);
+
+        if (this.voices.length === 0) {
+            this.updateStatus('No speech synthesis voices available in your browser.', 'error');
+            console.warn('No voices found. Make sure your browser supports SpeechSynthesis API and has voices installed.');
+        } else {
+            this.updateStatus('Voices loaded.', 'success');
+        }
     }
 
     changeVoice() {
-        const voiceName = this.voiceSelect.value;
-        this.selectedVoice = this.voices.find(voice => voice.name === voiceName);
-        if (this.isPlaying) {
-            this.resumeOrRestartSpeech(); // Apply new voice if playing
+        const selectedVoiceName = this.voiceSelect.value;
+        this.selectedVoice = this.voices.find(voice => voice.name === selectedVoiceName);
+        this.stopSpeech(); // Stop and restart with new voice if playing
+        if (this.isPlaying && this.currentText) {
+            this.playSpeech(this.currentSentenceIndex); // Resume with new voice
         }
     }
 
     changeSpeed() {
         this.speed = parseFloat(this.speedRange.value);
         this.speedValue.textContent = `${this.speed.toFixed(1)}x`;
-        if (this.isPlaying) {
-            this.resumeOrRestartSpeech(); // Apply new speed if playing
+        if (this.currentUtterance) {
+            this.currentUtterance.rate = this.speed;
+        }
+        this.stopSpeech(); // Stop and restart with new speed if playing
+        if (this.isPlaying && this.currentText) {
+            this.playSpeech(this.currentSentenceIndex); // Resume with new speed
         }
     }
 
     changeVolume() {
         this.volume = parseFloat(this.volumeRange.value);
-        // If an utterance is currently speaking, update its volume
         if (this.currentUtterance) {
             this.currentUtterance.volume = this.volume;
-            // A new utterance might be needed for the change to take full effect depending on browser
-            if (this.isPlaying && this.speechSynthesis.speaking) {
-                 // No need to stop and restart, volume usually applies dynamically
+        }
+        // Volume change doesn't require restarting speech, it applies immediately
+    }
+
+    splitIntoSentences(text) {
+        // Improved regex for sentence splitting, handling common punctuation and abbreviations
+        const sentences = text.match(/[^.!?]+[.!?]|\S+$/g) || [];
+        return sentences.map(s => s.trim()).filter(s => s.length > 0);
+    }
+
+    highlightText(fullText, highlightIndex) {
+        const words = fullText.split(/(\s+)/); // Split by words, keeping delimiters
+        let html = '';
+        let currentWordIndex = 0;
+
+        this.sentences.forEach((sentence, index) => {
+            const sentenceWords = sentence.split(/(\s+)/).filter(w => w.trim().length > 0);
+            let sentenceHtml = '';
+            
+            // Reconstruct sentence HTML word by word
+            let tempSentence = '';
+            let sentenceStartWordIndex = currentWordIndex;
+
+            for (let i = sentenceStartWordIndex; i < words.length; i++) {
+                const word = words[i];
+                const cleanWord = word.trim();
+
+                // Check if adding this word (and its potential space) forms the current sentence
+                // This is a heuristic and might need refinement for complex cases
+                if (cleanWord.length > 0) {
+                    tempSentence += word;
+                    if (tempSentence.trim() === sentence) { // Found the full sentence match
+                        // Apply highlight to the section of words that make up this sentence
+                        for(let j = sentenceStartWordIndex; j <= i; j++) {
+                            sentenceHtml += words[j];
+                        }
+                        currentWordIndex = i + 1;
+                        break; // Move to next sentence
+                    } else if (tempSentence.trim().length > sentence.length * 1.5 && tempSentence.trim().includes(sentence)) {
+                        // Heuristic for partial match or if the splitter was imperfect
+                        // Take the exact sentence as HTML and advance the word index
+                        sentenceHtml = sentence;
+                        currentWordIndex = i + 1; // Simplistic - would need more exact mapping
+                        break;
+                    }
+                } else { // It's a space or delimiter
+                    tempSentence += word;
+                }
+                 // If we've passed the expected length of the sentence, it means the splitting might be off.
+                // Just add the word and keep going, hoping the next sentence boundary is found.
+                if (i === words.length -1 || tempSentence.trim().length > sentence.length * 2 ) {
+                     // Fallback: If unable to match perfectly, just use the raw sentence text
+                    sentenceHtml = sentence;
+                    currentWordIndex = words.length; // Ensure loop terminates
+                    break;
+                }
             }
+
+
+            const cssClass = (index === highlightIndex) ? 'current-sentence' : 'clickable-sentence';
+            html += `<span data-sentence-index="${index}" class="${cssClass}">${sentenceHtml || sentence}</span>`;
+        });
+        
+        return html;
+    }
+
+
+    setupTextClickHandlers() {
+        this.contentDisplay.querySelectorAll('.clickable-sentence, .current-sentence').forEach(span => {
+            span.removeEventListener('click', this.handleSentenceClick); // Prevent duplicate listeners
+            span.addEventListener('click', (e) => this.handleSentenceClick(e));
+        });
+    }
+
+    handleSentenceClick(event) {
+        const index = parseInt(event.target.dataset.sentenceIndex, 10);
+        if (!isNaN(index) && this.sentences[index]) {
+            this.currentSentenceIndex = index;
+            this.playSpeech(this.currentSentenceIndex);
+            this.updateStatus(`Jumping to sentence ${index + 1}`);
         }
     }
 
-    playSpeech() {
-        if (!this.currentText || this.sentences.length === 0) {
-            this.updateStatus('No text loaded to play or no sentences found.', 'warning');
+    // Player control methods
+    togglePlayPause() {
+        if (!this.currentText) {
+            this.updateStatus('No text loaded to play.', 'warning');
             return;
         }
 
-        // If at the end, reset to start
-        if (this.currentSentenceIndex >= this.sentences.length) {
-            this.currentSentenceIndex = 0;
+        if (this.isPlaying) {
+            this.pauseSpeech();
+        } else {
+            this.playSpeech();
         }
+    }
 
+    playSpeech(startIndex = this.currentSentenceIndex) {
+        if (!this.currentText) {
+            this.updateStatus('No text to play.', 'warning');
+            return;
+        }
+        
+        this.stopSpeech(false); // Stop current utterance but don't reset index
         this.isPlaying = true;
         this.isPaused = false;
         this.playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
         this.updateStatus('Playing...');
-        this.speakCurrentSentence();
+        
+        this.currentSentenceIndex = startIndex;
+        this.readSentence(this.currentSentenceIndex);
     }
 
     pauseSpeech() {
-        if (this.speechSynthesis.speaking && !this.isPaused) {
+        if (this.currentUtterance && this.speechSynthesis.speaking) {
             this.speechSynthesis.pause();
             this.isPlaying = false;
             this.isPaused = true;
@@ -576,368 +617,244 @@ class TextToSpeechReader {
         }
     }
 
-    resumeSpeech() {
-        if (this.speechSynthesis.paused) {
-            this.speechSynthesis.resume();
-            this.isPlaying = true;
-            this.isPaused = false;
-            this.playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
-            this.updateStatus('Resuming...');
-        } else if (!this.isPlaying && !this.speechSynthesis.speaking) {
-            // Not playing or paused, start from current index
-            this.playSpeech();
-        }
-    }
-
-    togglePlayPause() {
-        if (this.speechSynthesis.speaking && !this.isPaused) {
-            this.pauseSpeech();
-        } else {
-            this.resumeSpeech();
-        }
-    }
-
-    stopSpeech() {
+    stopSpeech(resetIndex = true) {
         if (this.speechSynthesis.speaking || this.speechSynthesis.paused) {
             this.speechSynthesis.cancel();
         }
         this.isPlaying = false;
         this.isPaused = false;
-        this.currentSentenceIndex = 0;
+        this.currentUtterance = null;
         this.playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
-        this.updateTimeDisplay();
-        this.updateProgressBar(0);
-        this.updateStatus('Stopped.');
-        this.updateContentHighlight(); // Remove highlight by setting index to -1
-    }
-
-    resumeOrRestartSpeech() {
-        this.speechSynthesis.cancel(); // Cancel current utterance if any
-        this.isPlaying = false;
-        this.isPaused = false;
-        // Give a tiny delay to ensure cancel finishes before speaking again
-        setTimeout(() => {
-            this.playSpeech(); // Start playing from the current index
-        }, 50); 
-    }
-
-    speakCurrentSentence() {
-        if (!this.currentText || this.sentences.length === 0) {
-            this.stopSpeech();
-            return;
-        }
-
-        if (this.currentSentenceIndex >= this.sentences.length) {
-            this.stopSpeech();
-            this.updateStatus('Finished reading.');
-            return;
-        }
-
-        const sentence = this.sentences[this.currentSentenceIndex];
-        this.currentUtterance = new SpeechSynthesisUtterance(sentence);
         
+        if (resetIndex) {
+            this.currentSentenceIndex = 0;
+            this.updateProgressBar(0);
+            this.updateTimeDisplay();
+            this.contentDisplay.innerHTML = this.highlightText(this.currentText, -1); // Remove all highlights
+            this.updateStatus('Stopped.');
+        } else {
+            this.updateStatus('Playback stopped for change.');
+        }
+    }
+
+    readSentence(index) {
+        if (index >= this.sentences.length) {
+            this.stopSpeech();
+            this.updateStatus('Playback finished!', 'success');
+            return;
+        }
+
+        const sentence = this.sentences[index];
+        if (!sentence.trim()) {
+            this.currentSentenceIndex++;
+            this.readSentence(this.currentSentenceIndex);
+            return;
+        }
+
+        this.currentUtterance = new SpeechSynthesisUtterance(sentence);
+        this.currentUtterance.rate = this.speed;
+        this.currentUtterance.volume = this.volume;
         if (this.selectedVoice) {
             this.currentUtterance.voice = this.selectedVoice;
         }
-        this.currentUtterance.rate = this.speed;
-        this.currentUtterance.volume = this.volume;
+
+        // Highlight the current sentence
+        this.contentDisplay.innerHTML = this.highlightText(this.currentText, index);
+        this.scrollToCurrentSentence(index); // Call the updated scroll function
 
         this.currentUtterance.onend = () => {
             this.currentSentenceIndex++;
-            this.updateTimeDisplay(); // Update time immediately after sentence ends
-            this.updateProgressBar((this.currentSentenceIndex / this.sentences.length) * 100);
-            this.updateContentHighlight(); // Update highlight
-            
-            if (this.isPlaying) { // Only speak next if still in playing state
-                this.speakCurrentSentence();
-            }
+            this.updateProgressBar(this.currentSentenceIndex / this.sentences.length);
+            this.readSentence(this.currentSentenceIndex);
         };
 
         this.currentUtterance.onerror = (event) => {
-            console.error('SpeechSynthesisUtterance.onerror', event);
+            console.error('SpeechSynthesisUtterance error:', event);
             this.updateStatus(`Speech error: ${event.error}`, 'error');
-            this.isPlaying = false;
-            this.playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
+            this.stopSpeech();
         };
 
+        // For progress bar updates based on utterance
+        let charIndex = 0;
         this.currentUtterance.onboundary = (event) => {
-            // Update progress bar as words are spoken within a sentence (more granular)
-            if (event.name === 'word' && sentence.length > 0) {
-                const charProgress = (event.charIndex + event.charLength) / sentence.length;
-                const totalProgress = ((this.currentSentenceIndex + charProgress) / this.sentences.length) * 100;
-                this.updateProgressBar(totalProgress);
+            if (event.name === 'word') {
+                const totalCharsInUtterance = this.currentUtterance.text.length;
+                const progress = (event.charIndex + event.charLength) / totalCharsInUtterance;
+                // Only update progress bar for the current utterance's progress
+                const overallProgress = (this.currentSentenceIndex + progress) / this.sentences.length;
+                this.updateProgressBar(overallProgress);
             }
         };
 
         this.speechSynthesis.speak(this.currentUtterance);
-        
-        // Update highlight for the new sentence immediately when it starts speaking
-        this.updateContentHighlight();
+        this.updateTimeDisplay(); // Update current/total time (though total time will be approximate without actual duration)
     }
 
     previousSentence() {
         if (this.currentSentenceIndex > 0) {
             this.currentSentenceIndex--;
-            this.resumeOrRestartSpeech(); 
-            this.updateStatus('Playing previous sentence.');
+            this.playSpeech(this.currentSentenceIndex);
+            this.updateStatus('Previous sentence.');
         } else {
-            this.updateStatus('Already at the beginning.', 'warning');
+            this.updateStatus('Already at the beginning.', 'info');
         }
     }
 
     nextSentence() {
         if (this.currentSentenceIndex < this.sentences.length - 1) {
             this.currentSentenceIndex++;
-            this.resumeOrRestartSpeech();
-            this.updateStatus('Playing next sentence.');
+            this.playSpeech(this.currentSentenceIndex);
+            this.updateStatus('Next sentence.');
         } else {
-            this.updateStatus('Already at the end.', 'warning');
-            this.stopSpeech();
+            this.updateStatus('Already at the end.', 'info');
+            this.stopSpeech(); // Stop if it was the last sentence
         }
     }
 
-    // Progress bar and time
-    updateProgressBar(percentage) {
-        this.progressFill.style.width = `${percentage}%`;
-        // Handle pseudo-element positioning is automatic with width of fill.
+    // UPDATED SCROLLTOCURRENTSENTENCE FUNCTION
+    scrollToCurrentSentence(index) {
+        const highlightedSpan = this.contentDisplay.querySelector(`[data-sentence-index="${index}"]`);
+        if (highlightedSpan) {
+            const container = this.contentDisplay; // The scrollable container
+
+            const elementTop = highlightedSpan.offsetTop;
+            const elementHeight = highlightedSpan.offsetHeight;
+            const containerScrollTop = container.scrollTop;
+            const containerHeight = container.clientHeight;
+
+            // Determine if the element is currently visible
+            const isVisible = (elementTop >= containerScrollTop) && 
+                              ((elementTop + elementHeight) <= (containerScrollTop + containerHeight));
+
+            // Only scroll if the element is not fully visible within the container
+            if (!isVisible) {
+                // Calculate target scroll position to center the element (or near center)
+                // This will make only the contentDisplay scroll, not the whole page
+                container.scrollTo({
+                    top: elementTop - (containerHeight / 2) + (elementHeight / 2),
+                    behavior: 'smooth'
+                });
+            }
+        }
+    }
+
+    // Progress bar and time display
+    updateProgressBar(progress) {
+        // Progress is a value between 0 and 1
+        this.progressFill.style.width = `${progress * 100}%`;
     }
 
     updateTimeDisplay() {
-        // Calculate rough total duration
-        const wordsPerMinute = 150; // Average reading speed
-        const totalWords = this.currentText.trim() ? this.currentText.trim().split(/\s+/).length : 0;
-        const totalDurationSeconds = (totalWords / wordsPerMinute) * 60 / this.speed;
+        // This is a rough estimation as SpeechSynthesisUtterance doesn't provide total duration easily.
+        // For more accurate time, you'd need to pre-calculate based on words/characters and average reading speed.
+        // Here, we'll just show the current sentence number and total sentences.
+        const current = this.currentSentenceIndex + 1;
+        const total = this.sentences.length;
+        this.currentTime.textContent = `Sentence ${current}`;
+        this.totalTime.textContent = `Total: ${total}`;
 
-        let elapsedWords = 0;
-        for (let i = 0; i < this.currentSentenceIndex; i++) {
-            elapsedWords += this.sentences[i].trim().split(/\s+/).length;
-        }
-        const elapsedSeconds = (elapsedWords / wordsPerMinute) * 60 / this.speed;
-        
-        const formatTime = (seconds) => {
-            if (isNaN(seconds) || seconds < 0) return '0:00';
-            const minutes = Math.floor(seconds / 60);
-            const remainingSeconds = Math.floor(seconds % 60);
-            return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
-        };
-
-        this.currentTime.textContent = formatTime(elapsedSeconds);
-        this.totalTime.textContent = formatTime(totalDurationSeconds);
+        // Alternatively, for "total time", you could estimate:
+        // const wordsPerMinute = 150; // Average reading speed
+        // const totalWords = this.currentText.split(/\s+/).filter(word => word.length > 0).length;
+        // const estimatedMinutes = totalWords / wordsPerMinute;
+        // const totalSeconds = Math.floor(estimatedMinutes * 60);
+        // this.totalTime.textContent = this.formatTime(totalSeconds);
     }
 
-    // Progress Bar Interaction (Click and Drag)
-    startProgressBarDrag(event) {
+    formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = Math.floor(seconds % 60);
+        return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+    }
+
+    // Progress bar dragging logic
+    startProgressBarDrag(e) {
         this.isDraggingProgressBar = true;
-        this.speechSynthesis.cancel(); // Stop speech immediately on drag start
-        this.handleProgressBarDrag(event); // Update position immediately
+        this.pauseSpeech(); // Pause speech when dragging starts
+        this.seekToPosition(e); // Immediately seek to click position
     }
 
-    handleProgressBarDrag(event) {
+    handleProgressBarDrag(e) {
         if (!this.isDraggingProgressBar) return;
-
-        event.preventDefault(); // Prevent text selection during drag
-
-        const clientX = event.touches ? event.touches[0].clientX : event.clientX;
-        const progressBarRect = this.progressBar.getBoundingClientRect();
-        let newX = clientX - progressBarRect.left;
-        newX = Math.max(0, Math.min(newX, progressBarRect.width)); // Clamp within bounds
-
-        const percentage = (newX / progressBarRect.width) * 100;
-        this.updateProgressBar(percentage);
-
-        // Update current sentence index while dragging, but don't speak yet
-        const newSentenceIndex = Math.floor((percentage / 100) * this.sentences.length);
-        this.currentSentenceIndex = newSentenceIndex;
-        this.updateTimeDisplay();
-        this.updateContentHighlight(false); // Do not scroll into view during drag!
+        e.preventDefault(); // Prevent text selection etc.
+        this.seekToPosition(e);
     }
 
     endProgressBarDrag() {
-        if (!this.isDraggingProgressBar) return;
-        this.isDraggingProgressBar = false;
-        
-        // After dragging, resume speech from the new position
-        this.resumeSpeech(); 
-        this.updateContentHighlight(true); // Now, scroll to the new position once drag ends
+        if (this.isDraggingProgressBar) {
+            this.isDraggingProgressBar = false;
+            if (this.currentText) {
+                this.playSpeech(this.currentSentenceIndex); // Resume speech from new position
+            }
+        }
     }
 
-    seekToPosition(event) {
-        // This handles simple clicks on the progress bar, when not dragging
-        if (this.isDraggingProgressBar) return; 
+    seekToPosition(e) {
+        if (!this.currentText || this.sentences.length === 0) return;
 
         const progressBarRect = this.progressBar.getBoundingClientRect();
-        const clickX = event.clientX - progressBarRect.left;
-        const percentage = (clickX / progressBarRect.width);
+        const clientX = e.clientX || e.touches[0].clientX; // Handle touch events
+        const clickX = clientX - progressBarRect.left;
+        const percentage = Math.max(0, Math.min(1, clickX / progressBarRect.width));
+        
         const newSentenceIndex = Math.floor(percentage * this.sentences.length);
-        
-        this.jumpToSentence(newSentenceIndex);
+        this.currentSentenceIndex = newSentenceIndex;
+        this.updateProgressBar(percentage);
+        this.contentDisplay.innerHTML = this.highlightText(this.currentText, newSentenceIndex);
+        this.scrollToCurrentSentence(newSentenceIndex);
+        this.updateTimeDisplay();
+        this.updateStatus(`Seeking to sentence ${newSentenceIndex + 1}`);
     }
 
-    // Utility methods
-    splitIntoSentences(text) {
-        // A more robust sentence splitting regex that handles common punctuation.
-        // It tries to split on ., ?, ! followed by a space or end of string, 
-        // but avoids splitting on common abbreviations like "Mr." or "U.S.".
-        // This is a complex problem for a simple regex, but this is a good start.
-        const sentences = text.match(/[^.!?\s][^.!?]*(?:[.!?](?!['"”)]?\s*(?:[A-Z]|\d|\s*$))|$)|\S+/g);
-        return sentences ? sentences.map(s => s.trim()).filter(s => s.length > 0) : [];
-    }
-
-    highlightText(fullText, highlightIndex) {
-        if (!fullText || this.sentences.length === 0) return fullText; // Return original if no sentences
-
-        let resultHtml = '';
-        let currentTextPosition = 0; // Tracks position in the original fullText
-
-        this.sentences.forEach((sentence, index) => {
-            const trimmedSentence = sentence.trim();
-            if (trimmedSentence.length === 0) return;
-
-            // Find the exact occurrence of the trimmed sentence in the original text
-            const startIndex = fullText.indexOf(trimmedSentence, currentTextPosition);
-            
-            if (startIndex !== -1) {
-                // Add the text before this sentence (unhighlighted)
-                resultHtml += fullText.substring(currentTextPosition, startIndex);
-
-                // Add the sentence, with or without highlight class
-                if (index === highlightIndex) {
-                    resultHtml += `<span class="clickable-sentence current-sentence" data-sentence-index="${index}">${trimmedSentence}</span>`;
-                } else {
-                    resultHtml += `<span class="clickable-sentence" data-sentence-index="${index}">${trimmedSentence}</span>`;
-                }
-                // Update the current text position past this sentence
-                currentTextPosition = startIndex + trimmedSentence.length;
-            } else {
-                // Fallback: If sentence not found, append it as plain text and advance
-                // This might happen with very aggressive trimming or complex text.
-                resultHtml += `<span class="clickable-sentence" data-sentence-index="${index}">${trimmedSentence}</span>`;
-                currentTextPosition += trimmedSentence.length; // Approximate advance
-            }
-        });
-
-        // Add any remaining text after the last processed sentence
-        resultHtml += fullText.substring(currentTextPosition);
-        
-        return resultHtml;
-    }
-
-    setupTextClickHandlers() {
-        // Remove existing handlers to prevent duplicates if content is re-rendered
-        this.contentDisplay.querySelectorAll('.clickable-sentence').forEach(el => {
-            el.removeEventListener('click', el._boundJumpToSentence); // Use the stored reference
-            delete el._boundJumpToSentence; // Clean up
-        });
-
-        // Add new click handlers to sentences in the content display
-        this.contentDisplay.querySelectorAll('.clickable-sentence').forEach((element) => {
-            // Bind `this` context for event listener, store reference to remove later
-            const boundHandler = this.jumpToSentence.bind(this, parseInt(element.dataset.sentenceIndex));
-            element.addEventListener('click', boundHandler);
-            element._boundJumpToSentence = boundHandler; // Store reference
-        });
-    }
-
-    jumpToSentence(sentenceIndex) {
-        if (sentenceIndex < 0 || sentenceIndex >= this.sentences.length) {
-            this.updateStatus('Invalid sentence index.', 'error');
-            return;
-        }
-        
-        this.speechSynthesis.cancel(); // Stop current speech
-        this.currentSentenceIndex = sentenceIndex;
-        
-        // Play from the new sentence
-        this.resumeOrRestartSpeech();
-        this.updateStatus(`Jumping to sentence ${sentenceIndex + 1}.`);
-    }
-
-    // MODIFIED: Corrected to scroll only the contentDisplay element
-    updateContentHighlight(shouldScroll = true) { 
-        this.contentDisplay.innerHTML = this.highlightText(this.currentText, this.currentSentenceIndex);
-        this.setupTextClickHandlers(); // Re-attach handlers after re-rendering HTML
-        
-        // Only scroll if explicitly requested (e.g., not during a drag)
-        if (shouldScroll) {
-            const highlightedElement = this.contentDisplay.querySelector('.current-sentence');
-            if (highlightedElement) {
-                const container = this.contentDisplay;
-                
-                const elementTop = highlightedElement.offsetTop;
-                const elementHeight = highlightedElement.offsetHeight;
-                const containerScrollTop = container.scrollTop;
-                const containerHeight = container.clientHeight;
-
-                // Determine if the element is currently visible within the container
-                const isVisible = (elementTop >= containerScrollTop) && 
-                                  ((elementTop + elementHeight) <= (containerScrollTop + containerHeight));
-
-                // Only scroll if the element is not fully visible within the container
-                if (!isVisible) {
-                    // Calculate target scroll position to center the element (or near center)
-                    container.scrollTo({
-                        top: elementTop - (containerHeight / 2) + (elementHeight / 2),
-                        behavior: 'smooth'
-                    });
-                }
-            }
-        }
-    }
-
-    toggleContentDisplay() {
-        const isCurrentlyHidden = this.contentDisplay.style.display === 'none' || this.contentDisplay.style.display === '';
-        this.contentDisplay.style.display = isCurrentlyHidden ? 'block' : 'none';
-        this.toggleContentBtn.innerHTML = isCurrentlyHidden ? 
-            '<i class="fas fa-eye-slash"></i> Hide Content' : 
-            '<i class="fas fa-eye"></i> Show Content';
-    }
-
-
-    showLoading(show, message = 'Processing document...') {
+    // UI utility methods
+    showLoading(show, message = 'Loading...') {
         this.loadingOverlay.style.display = show ? 'flex' : 'none';
         this.loadingOverlay.querySelector('p').textContent = message;
     }
 
     updateStatus(message, type = 'info') {
-        const statusSpan = this.statusDisplay.querySelector('span');
-        const statusIcon = this.statusDisplay.querySelector('i');
+        const statusElement = this.statusDisplay.querySelector('span');
+        const iconElement = this.statusDisplay.querySelector('i');
+        statusElement.textContent = message;
         
-        statusSpan.textContent = message;
-        
-        // Reset colors
-        statusSpan.style.color = '';
-        statusIcon.style.color = '';
+        // Reset classes
+        this.statusDisplay.className = 'status-display'; 
+        iconElement.className = 'fas';
 
-        // Apply specific styles based on type
+        // Apply type-specific styles
         switch (type) {
-            case 'info':
-                statusIcon.className = 'fas fa-info-circle';
-                statusIcon.style.color = 'var(--primary-green)';
+            case 'success':
+                this.statusDisplay.classList.add('status-success');
+                iconElement.classList.add('fa-check-circle');
                 break;
             case 'warning':
-                statusIcon.className = 'fas fa-exclamation-triangle';
-                statusIcon.style.color = 'var(--warning-color)';
+                this.statusDisplay.classList.add('status-warning');
+                iconElement.classList.add('fa-exclamation-triangle');
                 break;
             case 'error':
-                statusIcon.className = 'fas fa-times-circle';
-                statusIcon.style.color = 'var(--error-color)';
+                this.statusDisplay.classList.add('status-error');
+                iconElement.classList.add('fa-times-circle');
                 break;
-            case 'success':
-                statusIcon.className = 'fas fa-check-circle';
-                statusIcon.style.color = 'var(--success-color)';
-                break;
+            case 'info':
             default:
-                statusIcon.className = 'fas fa-info-circle'; // Default to info icon
-                statusIcon.style.color = 'var(--primary-green)';
+                this.statusDisplay.classList.add('status-info');
+                iconElement.classList.add('fa-info-circle');
                 break;
         }
-        // Also update parent class for potential text color changes
-        this.statusDisplay.classList.remove('status-info', 'status-warning', 'status-error', 'status-success');
-        this.statusDisplay.classList.add(`status-${type}`); // Add new class
+    }
+
+    toggleContentDisplay() {
+        if (this.contentDisplay.style.display === 'none' || this.contentDisplay.style.display === '') {
+            this.contentDisplay.style.display = 'block';
+            this.toggleContentBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Content';
+        } else {
+            this.contentDisplay.style.display = 'none';
+            this.toggleContentBtn.innerHTML = '<i class="fas fa-eye"></i> Show Content';
+        }
     }
 }
 
-// Initialize the reader when the DOM is fully loaded
+// Initialize the app
 document.addEventListener('DOMContentLoaded', () => {
-    window.reader = new TextToSpeechReader();
+    new TextToSpeechReader();
 });
