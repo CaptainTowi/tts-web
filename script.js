@@ -711,32 +711,48 @@ class TextToSpeechReader {
         }
     }
 
-    // UPDATED SCROLLTOCURRENTSENTENCE FUNCTION
+    // UPDATED SCROLLTOCURRENTSENTENCE FUNCTION (THE FIX)
     scrollToCurrentSentence(index) {
         const highlightedSpan = this.contentDisplay.querySelector(`[data-sentence-index="${index}"]`);
         if (highlightedSpan) {
             const container = this.contentDisplay; // The scrollable container
-
+            
+            // Get boundaries of the element relative to the viewport (or document)
+            const rect = highlightedSpan.getBoundingClientRect();
+            // Get boundaries of the container relative to the viewport
+            const containerRect = container.getBoundingClientRect();
+            
+            // Calculate the position of the element relative to its container's *current* scroll position
             const elementTop = highlightedSpan.offsetTop;
             const elementHeight = highlightedSpan.offsetHeight;
             const containerScrollTop = container.scrollTop;
             const containerHeight = container.clientHeight;
 
-            // Determine if the element is currently visible
-            const isVisible = (elementTop >= containerScrollTop) && 
-                              ((elementTop + elementHeight) <= (containerScrollTop + containerHeight));
+            // Define a small buffer (e.g., 2 lines worth of height)
+            const scrollBuffer = elementHeight * 2; 
 
-            // Only scroll if the element is not fully visible within the container
-            if (!isVisible) {
-                // Calculate target scroll position to center the element (or near center)
-                // This will make only the contentDisplay scroll, not the whole page
+            // 1. Check if the element's bottom is below the visible area (needs to scroll down)
+            if (elementTop + elementHeight > containerScrollTop + containerHeight) {
+                // Scroll down just enough to bring the bottom of the element into view, 
+                // plus a buffer to prevent it from hugging the bottom edge.
                 container.scrollTo({
-                    top: elementTop - (containerHeight / 2) + (elementHeight / 2),
+                    top: elementTop + elementHeight - containerHeight + scrollBuffer,
+                    behavior: 'smooth'
+                });
+            } 
+            // 2. Check if the element's top is above the visible area (needs to scroll up)
+            else if (elementTop < containerScrollTop) {
+                // Scroll up just enough to bring the top of the element into view,
+                // perhaps with a small buffer margin at the top.
+                container.scrollTo({
+                    top: elementTop - scrollBuffer,
                     behavior: 'smooth'
                 });
             }
+            // If neither of the above, the element is already visible, so no scroll is performed.
         }
     }
+
 
     // Progress bar and time display
     updateProgressBar(progress) {
